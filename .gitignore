@@ -1,3 +1,11 @@
 
 build/
 .dart_tool/
+
+*.zip
+*.vsix
+*.crdownload
+
+.env
+
+service.json

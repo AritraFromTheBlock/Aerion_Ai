@@ -18,6 +18,7 @@ class _RescueDashboardScreenState extends State<RescueDashboardScreen>
   bool _isLoadingStats = false;
   Map<String, dynamic>? _trends;
   String? _statsError;
+  bool _usingDemoData = false;
   late TabController _tabController;
 
   @override
@@ -33,10 +34,45 @@ class _RescueDashboardScreenState extends State<RescueDashboardScreen>
     super.dispose();
   }
 
+  // ── Demo / fallback data for live presentation ──────────────
+  static Map<String, dynamic> _generateDemoTrends() {
+    final now = DateTime.now();
+    return {
+      'success': true,
+      'windowHours': 168,
+      'incidentsByType': [
+        {'incident_type': 'FIRE', 'count': '14', 'avg_corroboration': '3.2'},
+        {'incident_type': 'FLOOD', 'count': '11', 'avg_corroboration': '4.1'},
+        {'incident_type': 'MEDICAL', 'count': '9', 'avg_corroboration': '2.8'},
+        {'incident_type': 'ACCIDENT', 'count': '7', 'avg_corroboration': '2.4'},
+        {'incident_type': 'STRUCTURAL', 'count': '5', 'avg_corroboration': '1.9'},
+        {'incident_type': 'CHEMICAL', 'count': '3', 'avg_corroboration': '1.5'},
+        {'incident_type': 'OTHER', 'count': '2', 'avg_corroboration': '1.0'},
+      ],
+      'incidentsBySeverity': [
+        {'severity': 'CRITICAL', 'count': '8'},
+        {'severity': 'HIGH', 'count': '15'},
+        {'severity': 'MODERATE', 'count': '12'},
+        {'severity': 'LOW', 'count': '6'},
+      ],
+      'hourlyVolume': List.generate(24, (i) {
+        final hour = now.subtract(Duration(hours: 23 - i));
+        final base = (i < 6) ? 1 : (i < 12) ? 3 : (i < 18) ? 5 : 2;
+        return {
+          'hour': hour.toIso8601String(),
+          'count': '${base + (i % 3)}',
+          'high_priority_count': '${(base * 0.4).round()}',
+        };
+      }),
+      'avgResponseMinutes': 4.7,
+    };
+  }
+
   Future<void> _loadStats() async {
     setState(() {
       _isLoadingStats = true;
       _statsError = null;
+      _usingDemoData = false;
     });
     try {
       final trends = await ApiService.getAnalyticsTrends(hours: 168);
@@ -47,10 +83,13 @@ class _RescueDashboardScreenState extends State<RescueDashboardScreen>
         });
       }
     } catch (e) {
+      // ── FALLBACK: use demo data so the presentation always works ──
       if (mounted) {
         setState(() {
-          _statsError = e.toString();
+          _trends = _generateDemoTrends();
+          _usingDemoData = true;
           _isLoadingStats = false;
+          _statsError = null; // clear error — we have demo data
         });
       }
     }
@@ -222,7 +261,8 @@ class _RescueDashboardScreenState extends State<RescueDashboardScreen>
       return const Center(child: CircularProgressIndicator(color: AppTheme.emergencyRed));
     }
 
-    if (_statsError != null) {
+    // If trends is still null (shouldn't happen with demo fallback), show empty
+    if (_trends == null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -252,95 +292,239 @@ class _RescueDashboardScreenState extends State<RescueDashboardScreen>
 
     final byType     = (_trends?['incidentsByType']     as List?) ?? [];
     final bySeverity = (_trends?['incidentsBySeverity'] as List?) ?? [];
+    final hourly     = (_trends?['hourlyVolume']        as List?) ?? [];
+    final avgResp    = _trends?['avgResponseMinutes'];
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _sectionHeader('Incidents by Type', Icons.category, '7-day window'),
-          const SizedBox(height: 12),
-
-          if (byType.isEmpty)
-            _emptyCard('No incident data yet')
-          else
-            ...byType.map<Widget>((item) {
-              final count = int.tryParse(item['count']?.toString() ?? '0') ?? 0;
-              final maxCount = byType.fold<int>(
-                1,
-                (m, i) => (int.tryParse(i['count']?.toString() ?? '0') ?? 0) > m
-                    ? (int.tryParse(i['count']?.toString() ?? '0') ?? 0)
-                    : m,
-              );
-              return _barRow(
-                label: item['incident_type']?.toString() ?? 'Unknown',
-                count: count,
-                maxCount: maxCount,
-                color: AppTheme.warningOrange,
-              );
-            }),
-
-          const SizedBox(height: 24),
-          _sectionHeader('By Severity', Icons.bar_chart, 'Active incidents'),
-          const SizedBox(height: 12),
-
-          if (bySeverity.isEmpty)
-            _emptyCard('No severity data yet')
-          else
-            ...bySeverity.map<Widget>((item) {
-              final sev   = item['severity']?.toString() ?? '';
-              final count = int.tryParse(item['count']?.toString() ?? '0') ?? 0;
-              final maxCount = bySeverity.fold<int>(
-                1,
-                (m, i) => (int.tryParse(i['count']?.toString() ?? '0') ?? 0) > m
-                    ? (int.tryParse(i['count']?.toString() ?? '0') ?? 0)
-                    : m,
-              );
-              Color col;
-              switch (sev.toUpperCase()) {
-                case 'CRITICAL': col = AppTheme.emergencyRed;   break;
-                case 'HIGH':     col = AppTheme.warningOrange;  break;
-                case 'MODERATE': col = Colors.blue;             break;
-                default:         col = AppTheme.successGreen;
-              }
-              return _barRow(label: sev, count: count, maxCount: maxCount, color: col);
-            }),
-
-          const SizedBox(height: 24),
-          // Quick info card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppTheme.surfaceElevated),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.auto_awesome, color: AppTheme.warningOrange),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Powered by Gemini AI', style: Theme.of(context).textTheme.labelMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        'All incidents are AI-triaged with severity classification and crowd corroboration.',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppTheme.textSecondary),
-                      ),
-                    ],
-                  ),
+    return RefreshIndicator(
+      onRefresh: _loadStats,
+      color: AppTheme.emergencyRed,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Demo-data banner ────────────────────────────────
+            if (_usingDemoData)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
                 ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.amber, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Displaying demo analytics — backend offline. Tap refresh to reconnect.',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.amber),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // ── Quick stat cards row ────────────────────────────
+            Row(
+              children: [
+                Expanded(child: _statCard(
+                  title: 'Total (7d)',
+                  value: _totalFromList(byType).toString(),
+                  color: AppTheme.emergencyRed,
+                  icon: Icons.assessment,
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: _statCard(
+                  title: 'Avg Response',
+                  value: avgResp != null ? '${(avgResp is num ? avgResp : double.tryParse(avgResp.toString()) ?? 0).toStringAsFixed(1)}m' : '—',
+                  color: AppTheme.successGreen,
+                  icon: Icons.timer,
+                )),
+                const SizedBox(width: 10),
+                Expanded(child: _statCard(
+                  title: 'Peak/hr',
+                  value: _peakFromHourly(hourly).toString(),
+                  color: Colors.blue,
+                  icon: Icons.trending_up,
+                )),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+
+            // ── Hourly Volume Sparkline ─────────────────────────
+            if (hourly.isNotEmpty) ...[
+              _sectionHeader('24h Incident Volume', Icons.show_chart, 'Hourly'),
+              const SizedBox(height: 12),
+              _buildSparkline(hourly),
+              const SizedBox(height: 24),
+            ],
+
+            // ── Incidents by Type ───────────────────────────────
+            _sectionHeader('Incidents by Type', Icons.category, '7-day window'),
+            const SizedBox(height: 12),
+
+            if (byType.isEmpty)
+              _emptyCard('No incident data yet')
+            else
+              ...byType.map<Widget>((item) {
+                final count = int.tryParse(item['count']?.toString() ?? '0') ?? 0;
+                final maxCount = byType.fold<int>(
+                  1,
+                  (m, i) => (int.tryParse(i['count']?.toString() ?? '0') ?? 0) > m
+                      ? (int.tryParse(i['count']?.toString() ?? '0') ?? 0)
+                      : m,
+                );
+                return _barRow(
+                  label: item['incident_type']?.toString() ?? 'Unknown',
+                  count: count,
+                  maxCount: maxCount,
+                  color: _colorForType(item['incident_type']?.toString() ?? ''),
+                );
+              }),
+
+            const SizedBox(height: 24),
+            _sectionHeader('By Severity', Icons.bar_chart, 'Active incidents'),
+            const SizedBox(height: 12),
+
+            if (bySeverity.isEmpty)
+              _emptyCard('No severity data yet')
+            else
+              ...bySeverity.map<Widget>((item) {
+                final sev   = item['severity']?.toString() ?? '';
+                final count = int.tryParse(item['count']?.toString() ?? '0') ?? 0;
+                final maxCount = bySeverity.fold<int>(
+                  1,
+                  (m, i) => (int.tryParse(i['count']?.toString() ?? '0') ?? 0) > m
+                      ? (int.tryParse(i['count']?.toString() ?? '0') ?? 0)
+                      : m,
+                );
+                Color col;
+                switch (sev.toUpperCase()) {
+                  case 'CRITICAL': col = AppTheme.emergencyRed;   break;
+                  case 'HIGH':     col = AppTheme.warningOrange;  break;
+                  case 'MODERATE': col = Colors.blue;             break;
+                  default:         col = AppTheme.successGreen;
+                }
+                return _barRow(label: sev, count: count, maxCount: maxCount, color: col);
+              }),
+
+            const SizedBox(height: 24),
+
+            // ── AI info card ────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppTheme.surfaceElevated),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome, color: AppTheme.warningOrange),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Powered by Gemini AI', style: Theme.of(context).textTheme.labelMedium),
+                        const SizedBox(height: 4),
+                        Text(
+                          'All incidents are AI-triaged with severity classification and crowd corroboration.',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
 
-  // ── Small helpers ─────────────────────────────────────────────
+  // ── Sparkline bar chart for hourly volume ──────────────────────
+  Widget _buildSparkline(List hourly) {
+    final counts = hourly.map<int>((h) => int.tryParse(h['count']?.toString() ?? '0') ?? 0).toList();
+    final maxVal = counts.fold<int>(1, (m, v) => v > m ? v : m);
+
+    return Container(
+      height: 100,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.surfaceElevated),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: List.generate(counts.length, (i) {
+          final frac = counts[i] / maxVal;
+          final isHighPeak = counts[i] == maxVal;
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1),
+              child: Tooltip(
+                message: '${counts[i]} incidents',
+                child: AnimatedContainer(
+                  duration: Duration(milliseconds: 400 + i * 20),
+                  curve: Curves.easeOutCubic,
+                  height: (frac * 80).clamp(4.0, 80.0),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(3),
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: isHighPeak
+                          ? [AppTheme.emergencyRed, AppTheme.warningOrange]
+                          : [AppTheme.emergencyRed.withValues(alpha: 0.5), AppTheme.warningOrange.withValues(alpha: 0.3)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────
+  int _totalFromList(List items) {
+    int t = 0;
+    for (final item in items) {
+      t += int.tryParse(item['count']?.toString() ?? '0') ?? 0;
+    }
+    return t;
+  }
+
+  int _peakFromHourly(List hourly) {
+    int peak = 0;
+    for (final h in hourly) {
+      final c = int.tryParse(h['count']?.toString() ?? '0') ?? 0;
+      if (c > peak) peak = c;
+    }
+    return peak;
+  }
+
+  Color _colorForType(String type) {
+    switch (type.toUpperCase()) {
+      case 'FIRE':        return const Color(0xFFFF6B35);
+      case 'FLOOD':       return const Color(0xFF4FC3F7);
+      case 'MEDICAL':     return const Color(0xFFEF5350);
+      case 'ACCIDENT':    return const Color(0xFFFFB74D);
+      case 'STRUCTURAL':  return const Color(0xFF9575CD);
+      case 'CHEMICAL':    return const Color(0xFF66BB6A);
+      default:            return AppTheme.warningOrange;
+    }
+  }
+
   Widget _statCard({
     required String title,
     required String value,
