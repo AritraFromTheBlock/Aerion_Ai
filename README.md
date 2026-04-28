@@ -23,7 +23,7 @@
 
 ## 🛠️ Overview
 
-Arion AI is a **production‑grade**, AI‑driven emergency response platform designed to drastically reduce incident detection‑to‑response latency in crisis scenarios. The system enables:
+Aerion AI is a **production‑grade**, AI‑driven emergency response platform designed to drastically reduce incident detection‑to‑response latency in crisis scenarios. The system enables:
 
 - **One‑tap SOS alerts** with real‑time GPS tracking and custom distress messages.
 - **AI‑powered incident triage** — every report is classified and summarised by Google Gemini before it reaches a responder.
@@ -229,4 +229,4 @@ All code must adhere to the existing **ESLint** / **dart analyze** rules and inc
 
 ---
 
-*Built with precision. Deployed with purpose. **Arion AI** — every second counts.* 🚀
+*Built with precision. Deployed with purpose. **Aerion AI** — every second counts.* 🚀
