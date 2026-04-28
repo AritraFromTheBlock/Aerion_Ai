@@ -304,29 +304,6 @@ class _RescueDashboardScreenState extends State<RescueDashboardScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Demo-data banner ────────────────────────────────
-            if (_usingDemoData)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.amber.withValues(alpha: 0.4)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline, color: Colors.amber, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Displaying demo analytics — backend offline. Tap refresh to reconnect.',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.amber),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
 
             // ── Quick stat cards row ────────────────────────────
             Row(

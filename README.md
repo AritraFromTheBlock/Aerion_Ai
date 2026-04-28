@@ -163,43 +163,6 @@ After deployment, the service URL appears in the Cloud Run console (e.g. `https:
 
 ---
 
-## 💡 Billing Note
-Your Cloud Run service is currently **returning 503** because **billing is disabled** for the GCP project (`aegis-crisis-response-493911`).
-
-**Fix:**
-1. Open the Google Cloud Console → **Billing**.
-2. **Link** an active billing account to the project or re‑enable the existing one.
-3. Verify the service status again (`gcloud run services describe ...`). The request should now return **200**.
-
-Once billing is active, the mobile app will communicate with the backend without the "Server unavailable" error.
-
----
-
-## 🔧 Common Pitfalls & Fixes
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `FormatException` on API calls | Backend returned HTML error page. | Added `_safeJsonDecode` + `_expectSuccess` – now throws `ApiException` with friendly messages.
-| SOS messages not stored in DB | `INSERT` omitted `message` column. | Fixed in `src/routes/sos.ts` – now inserts `message`.
-| SQL injection warnings | Raw string interpolation in `incidents.ts` & `dashboard.ts`. | Switched to parameterised queries (`$N`). |
-| 503 Service Unavailable | Billing disabled for Cloud Run project. | Re‑enable billing (see Billing Note). |
-| Unused import warnings | Stale import in `login_screen.dart`. | Removed `primary_button.dart` import. |
-
----
-
-## 📚 Documentation & Screenshots
-Below is a quick visual tour. *(Replace the placeholders with real screenshots if you wish to commit them to the repo.)*
-
-![Main Map Screen](https://raw.githubusercontent.com/your‑org/arion‑ai/main/docs/main_map.png)
-*Live incident map with colour‑coded severity markers.*
-
-![Report Screen](https://raw.githubusercontent.com/your‑org/arion‑ai/main/docs/report_screen.png)
-*AI‑triaged incident reporting.*
-
-![SOS Screen](https://raw.githubusercontent.com/your‑org/arion‑ai/main/docs/sos_screen.png)
-*One‑tap panic button with custom message support.*
-
----
-
 ## 🤝 Contributing
 Contributions are welcome! Please follow these steps:
 1. **Fork** the repository.
