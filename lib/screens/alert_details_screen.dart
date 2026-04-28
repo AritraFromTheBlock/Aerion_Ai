@@ -28,12 +28,64 @@ class _AlertDetailsScreenState extends State<AlertDetailsScreen> {
   bool _hasCorroborated = false;
   late int _corroborationCount;
 
+  // AI retriage state
+  bool _isRetriaging = false;
+  String? _retriagedDescription;
+  bool _retriageFailed = false;
+
   @override
   void initState() {
     super.initState();
     _currentSeverity = widget.alert.severity;
     _corroborationCount = widget.alert.corroborationCount ?? 1;
+
+    // Auto-retriage if the current description is the fallback text
+    if (ApiService.isTriageFallback(widget.alert.description)) {
+      _autoRetriage();
+    }
   }
+
+  Future<void> _autoRetriage() async {
+    if (widget.alert.id.isEmpty) return;
+    setState(() {
+      _isRetriaging = true;
+      _retriageFailed = false;
+    });
+    try {
+      final result = await ApiService.retriageIncident(widget.alert.id);
+      if (mounted) {
+        final newSummary = result['aiSummary']?.toString() ?? '';
+        if (result['retriaged'] == true && newSummary.isNotEmpty) {
+          setState(() {
+            _retriagedDescription = newSummary;
+            _isRetriaging = false;
+          });
+        } else if (result['retriaged'] == false && !ApiService.isTriageFallback(newSummary)) {
+          // Already had valid analysis on server side
+          setState(() {
+            _retriagedDescription = newSummary;
+            _isRetriaging = false;
+          });
+        } else {
+          setState(() {
+            _isRetriaging = false;
+            _retriageFailed = true;
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isRetriaging = false;
+          _retriageFailed = true;
+        });
+      }
+    }
+  }
+
+  /// Returns the best available description (retriage result or original)
+  String get _effectiveDescription =>
+      _retriagedDescription ?? widget.alert.description;
 
   Future<void> _corroborate() async {
     if (_hasCorroborated || _isCorroborating) return;
@@ -291,35 +343,7 @@ class _AlertDetailsScreenState extends State<AlertDetailsScreen> {
                           const SizedBox(height: 24),
 
                           // ── AI Summary ───────────────────────────
-                          if (widget.alert.description.isNotEmpty) ...[
-                            Row(
-                              children: [
-                                const Icon(Icons.auto_awesome, color: AppTheme.warningOrange, size: 16),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'AI Analysis',
-                                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: AppTheme.surface,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: AppTheme.surfaceElevated),
-                              ),
-                              child: Text(
-                                widget.alert.description,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: AppTheme.textPrimary,
-                                      height: 1.6,
-                                    ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                          ],
+                          _buildAiAnalysisSection(context),
 
                           // ── Safety Guidance ──────────────────────
                           Container(
@@ -374,6 +398,160 @@ class _AlertDetailsScreenState extends State<AlertDetailsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // ── AI Analysis Section Widget ──────────────────────────────
+  Widget _buildAiAnalysisSection(BuildContext context) {
+    final isFallback = ApiService.isTriageFallback(_effectiveDescription);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row with optional loading indicator
+        Row(
+          children: [
+            const Icon(Icons.auto_awesome, color: AppTheme.warningOrange, size: 16),
+            const SizedBox(width: 8),
+            Text(
+              'AI Analysis',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
+            ),
+            if (_isRetriaging) ...[
+              const SizedBox(width: 10),
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppTheme.warningOrange,
+                ),
+              ),
+            ],
+            if (!_isRetriaging && !isFallback)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppTheme.successGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.successGreen.withValues(alpha: 0.4)),
+                  ),
+                  child: Text(
+                    'Gemini AI',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: AppTheme.successGreen,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // Content card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _isRetriaging
+                  ? AppTheme.warningOrange.withValues(alpha: 0.4)
+                  : (isFallback
+                      ? AppTheme.surfaceElevated
+                      : AppTheme.successGreen.withValues(alpha: 0.3)),
+            ),
+          ),
+          child: _isRetriaging
+              // Loading state
+              ? Row(
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.warningOrange,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Running Gemini AI triage analysis…',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.textSecondary,
+                            fontStyle: FontStyle.italic,
+                          ),
+                    ),
+                  ],
+                )
+              : isFallback
+                  // Fallback / retriage failed state
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: AppTheme.warningOrange,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'AI analysis could not be generated for this incident.',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: AppTheme.textSecondary,
+                                      height: 1.5,
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_retriageFailed) ...[
+                          const SizedBox(height: 12),
+                          GestureDetector(
+                            onTap: _autoRetriage,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.warningOrange.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppTheme.warningOrange.withValues(alpha: 0.5)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.refresh, color: AppTheme.warningOrange, size: 14),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Retry AI Analysis',
+                                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                          color: AppTheme.warningOrange,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    )
+                  // Success state — real AI analysis
+                  : Text(
+                      _effectiveDescription,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.textPrimary,
+                            height: 1.6,
+                          ),
+                    ),
+        ),
+        const SizedBox(height: 24),
+      ],
     );
   }
 

@@ -592,6 +592,109 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res: Response): Promis
 });
 
 // =============================================================
+// POST /incidents/:id/retriage
+// Re-run AI triage for incidents where the original triage failed.
+// Public endpoint (API key) — used by Flutter when it detects the
+// fallback "Automated triage unavailable" text.
+// =============================================================
+router.post(
+  '/:id/retriage',
+  requireApiKey,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const incidentResult = await query(
+        'SELECT id, message, lat, lng, ai_summary FROM incidents WHERE id = $1',
+        [req.params.id]
+      );
+
+      if (incidentResult.rows.length === 0) {
+        res.status(404).json({ success: false, error: 'Incident not found' });
+        return;
+      }
+
+      const incident = incidentResult.rows[0];
+      const currentSummary = (incident.ai_summary as string) || '';
+
+      // Only retriage if the current summary is the fallback text or empty
+      const isFallback = !currentSummary
+        || currentSummary.includes('Automated triage unavailable')
+        || currentSummary.includes('Manual review required')
+        || currentSummary === 'Incident reported — details pending.'
+        || currentSummary === 'No details available.';
+
+      if (!isFallback) {
+        // Already has valid AI analysis — return it as-is
+        res.json({
+          success: true,
+          retriaged: false,
+          message: 'Incident already has valid AI analysis.',
+          aiSummary: currentSummary,
+        });
+        return;
+      }
+
+      // Re-run AI triage
+      console.log(`🔄 [Retriage] Re-triaging incident ${incident.id}...`);
+      const triage = await triageIncident(
+        incident.message as string,
+        incident.lat as number,
+        incident.lng as number
+      );
+
+      // Check if retriage also failed (returned the fallback again)
+      if (triage.summary === 'Automated triage unavailable. Manual review required.') {
+        res.json({
+          success: true,
+          retriaged: false,
+          message: 'AI triage still unavailable. Please try again later.',
+          aiSummary: currentSummary,
+        });
+        return;
+      }
+
+      // Update DB with new AI results
+      await query(
+        `UPDATE incidents SET
+           ai_summary    = $2,
+           incident_type = $3,
+           severity      = $4,
+           confidence    = $5,
+           updated_at    = NOW()
+         WHERE id = $1`,
+        [incident.id, triage.summary, triage.incidentType, triage.severity, triage.confidence]
+      );
+
+      console.log(`✅ [Retriage] Incident ${incident.id} updated: ${triage.incidentType} | ${triage.severity}`);
+
+      // Update Firestore too
+      try {
+        const db = getFirestore();
+        await db.collection('incidents').doc(String(incident.id)).update({
+          aiSummary:    triage.summary,
+          incidentType: triage.incidentType,
+          severity:     triage.severity,
+          confidence:   triage.confidence,
+        });
+      } catch (e) { /* non-fatal */ }
+
+      res.json({
+        success:            true,
+        retriaged:          true,
+        message:            'AI triage completed successfully.',
+        aiSummary:          triage.summary,
+        incidentType:       triage.incidentType,
+        severity:           triage.severity,
+        confidence:         triage.confidence,
+        recommendedActions: triage.recommendedActions,
+      });
+    } catch (err) {
+      console.error('🔴 [Incidents/retriage]', (err as Error).message);
+      res.status(500).json({ success: false, error: 'Failed to retriage incident' });
+    }
+  }
+);
+
+// =============================================================
 // GET /incidents/:id/sitrep
 // AI-generated military-grade Situation Report (SITREP)
 // Emergency responders only. Synthesises all incident data

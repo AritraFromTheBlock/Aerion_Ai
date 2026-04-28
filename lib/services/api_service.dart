@@ -354,6 +354,39 @@ class ApiService {
       throw ApiException('Network error: could not load incident details.');
     }
   }
+
+  // =============================================================
+  // POST /incidents/:id/retriage
+  // Re-run AI triage for incidents where initial triage failed.
+  // Returns updated AI analysis or error.
+  // =============================================================
+  static Future<Map<String, dynamic>> retriageIncident(String id) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/incidents/$id/retriage'),
+            headers: _anonHeaders,
+          )
+          .timeout(const Duration(seconds: 30));
+
+      return _expectSuccess(response, fallbackError: 'Failed to retriage incident');
+    } on ApiException {
+      rethrow;
+    } catch (e) {
+      throw ApiException('Network error: could not retriage incident.');
+    }
+  }
+
+  // =============================================================
+  // HELPER: Check if a description is the AI fallback text
+  // =============================================================
+  static bool isTriageFallback(String description) {
+    return description.isEmpty ||
+        description.contains('Automated triage unavailable') ||
+        description.contains('Manual review required') ||
+        description == 'Incident reported — details pending.' ||
+        description == 'No details available.';
+  }
 }
 
 // =============================================================

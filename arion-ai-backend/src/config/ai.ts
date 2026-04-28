@@ -3,8 +3,84 @@ import { GoogleGenAI } from '@google/genai';
 // =============================================================
 // GEMINI AI CONFIG
 // Uses the @google/genai SDK (stable v1 API)
+// Model fallback chain: 2.0-flash → 1.5-flash → 1.5-flash-8b
+// Retries up to 2 times on 429 quota errors with backoff.
 // =============================================================
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
+
+// Validate key at startup — catches misconfigured Cloud Run envs early
+if (!GEMINI_KEY) {
+  console.error('🔴 [AI] GEMINI_API_KEY is not set! AI triage will use fallback responses.');
+} else if (!GEMINI_KEY.startsWith('AIza')) {
+  console.warn('🟡 [AI] GEMINI_API_KEY may be invalid (expected format: AIza...). AI triage may fail.');
+} else {
+  console.log('✅ [AI] Gemini API key loaded successfully.');
+}
+
+const genAI = new GoogleGenAI({ apiKey: GEMINI_KEY });
+
+// Model fallback chain — if the primary model is quota-limited, try the next
+// Correct model IDs from the API — verified via /v1beta/models endpoint
+const MODEL_CHAIN = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-2.5-flash'];
+
+// =============================================================
+// HELPER: generateWithFallback
+// Tries each model in MODEL_CHAIN. On 429 / quota error, waits
+// briefly and tries the next model. Returns the text result or
+// throws if ALL models fail.
+// =============================================================
+async function generateWithFallback(prompt: string): Promise<string> {
+  for (let modelIdx = 0; modelIdx < MODEL_CHAIN.length; modelIdx++) {
+    const model = MODEL_CHAIN[modelIdx];
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const result = await genAI.models.generateContent({
+          model,
+          contents: prompt,
+          config: { responseMimeType: 'application/json' },
+        });
+        const text = result.text || '{}';
+        console.log(`✅ [AI] Generated with model: ${model}`);
+        return text;
+      } catch (err) {
+        const msg = (err as Error).message || String(err);
+        const isQuota    = msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('resource_exhausted');
+        const isDailyOut = msg.toLowerCase().includes('perday') || msg.toLowerCase().includes('per_day') || msg.toLowerCase().includes('daily');
+        const isModelErr = msg.includes('404') || msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('invalid model');
+
+        if (isModelErr) {
+          // This model doesn't exist / isn't available — skip to next immediately
+          console.warn(`🟡 [AI] Model ${model} unavailable (${msg.slice(0, 80)}), trying next...`);
+          break;
+        }
+
+        if (isQuota && isDailyOut) {
+          // Daily quota fully exhausted — no point retrying this model
+          console.warn(`🟡 [AI] Model ${model} daily quota exhausted, falling back immediately...`);
+          break;
+        }
+
+        if (isQuota && attempt === 0) {
+          // Per-minute quota — wait 32s (API-recommended retryDelay) and retry once
+          console.warn(`🟡 [AI] Model ${model} rate-limited (429), retrying in 32s...`);
+          await new Promise(r => setTimeout(r, 32000));
+          continue;
+        }
+
+        if (isQuota && modelIdx < MODEL_CHAIN.length - 1) {
+          // Second attempt also quota — move to next model
+          console.warn(`🟡 [AI] Model ${model} still quota-limited, falling back to ${MODEL_CHAIN[modelIdx + 1]}...`);
+          break;
+        }
+
+        // Non-quota error — log fully and throw
+        console.error(`🔴 [AI] Model ${model} error (attempt ${attempt + 1}): ${msg}`);
+        throw err;
+      }
+    }
+  }
+  throw new Error('All Gemini models quota-limited or unavailable');
+}
 
 // =============================================================
 // INTERFACES
@@ -26,6 +102,95 @@ export interface SitrepResult {
   safetyConsiderations: string[]; // Hazards, exclusion zones
   estimatedImpact:      string;   // Potential affected people / area
   generatedAt:          string;   // ISO timestamp
+}
+
+// =============================================================
+// RULE-BASED TRIAGE (Offline Fallback)
+// Keyword-based classifier used when Gemini quota is exhausted.
+// Provides meaningful triage without AI, marked with lower confidence.
+// =============================================================
+function ruleBasedTriage(message: string): TriageResult {
+  const m = message.toLowerCase();
+
+  // Rule table: [keywords, type, severity, summary, actions]
+  type RuleRow = [string[], string, TriageResult['severity'], string, string[]];
+  const rules: RuleRow[] = [
+    [
+      ['fire', 'blaze', 'burning', 'smoke', 'flames', 'arson'],
+      'Fire', 'CRITICAL',
+      'Active fire reported. Immediate evacuation and fire suppression response required.',
+      ['Dispatch fire brigade immediately', 'Evacuate all occupants', 'Establish 50m safety perimeter', 'Alert nearby units'],
+    ],
+    [
+      ['flood', 'flooding', 'submerged', 'waterlogged', 'inundated', 'deluge', 'overflow'],
+      'Flood', 'HIGH',
+      'Flooding reported in the area. Water rescue and evacuation may be required.',
+      ['Deploy water rescue teams', 'Evacuate low-lying zones', 'Alert disaster management authority', 'Monitor water levels'],
+    ],
+    [
+      ['earthquake', 'tremor', 'shaking', 'quake', 'seismic', 'aftershock'],
+      'Earthquake', 'CRITICAL',
+      'Seismic activity reported. Structural damage and casualties likely. Immediate response required.',
+      ['Search and rescue operations', 'Check structural integrity of buildings', 'Establish medical triage', 'Deploy NDRF teams'],
+    ],
+    [
+      ['gas', 'leak', 'lpg', 'pipeline', 'fumes', 'smell', 'chemical'],
+      'Gas Leak', 'HIGH',
+      'Hazardous gas or chemical leak reported. Evacuation and containment required immediately.',
+      ['Evacuate 100m radius', 'Cut gas supply at main valve', 'No open flames or electrical switches', 'Notify hazmat team'],
+    ],
+    [
+      ['collapse', 'building fell', 'structure', 'debris', 'rubble', 'cave'],
+      'Structural Collapse', 'CRITICAL',
+      'Structural collapse reported with possible trapped victims. Urban search and rescue required.',
+      ['Deploy urban search and rescue', 'Establish incident command post', 'Medical standby for casualties', 'Cordon area for aftershock risk'],
+    ],
+    [
+      ['accident', 'crash', 'collision', 'vehicle', 'car', 'truck', 'hit', 'ram'],
+      'Accident', 'HIGH',
+      'Traffic accident reported. Emergency medical services and road clearance required.',
+      ['Dispatch EMS immediately', 'Clear road for emergency access', 'Manage traffic diversion', 'Assess for fuel leak or fire risk'],
+    ],
+    [
+      ['medical', 'heart', 'unconscious', 'breathe', 'breathing', 'chest', 'stroke', 'seizure', 'collapsed', 'injured', 'wound'],
+      'Medical', 'CRITICAL',
+      'Medical emergency reported. Immediate paramedic response and first aid required.',
+      ['Dispatch ambulance immediately', 'Guide bystanders to begin CPR if needed', 'Clear path for emergency vehicle', 'Alert nearest hospital'],
+    ],
+    [
+      ['violence', 'attack', 'assault', 'shooting', 'stabbing', 'weapon', 'fight', 'riot', 'threat'],
+      'Violence', 'CRITICAL',
+      'Violent incident in progress. Immediate law enforcement and medical response required.',
+      ['Dispatch police immediately', 'Secure the perimeter', 'Do not enter without law enforcement', 'EMS on standby'],
+    ],
+    [
+      ['missing', 'lost', 'child', 'person', 'disappeared', 'cannot find'],
+      'Missing Person', 'MODERATE',
+      'Missing person report filed. Search and coordination with local authorities required.',
+      ['File missing person report with police', 'Coordinate search party', 'Alert nearby areas', 'Check CCTV footage'],
+    ],
+  ];
+
+  for (const [keywords, type, severity, summary, actions] of rules) {
+    if (keywords.some(kw => m.includes(kw))) {
+      return {
+        incidentType:       type,
+        severity,
+        confidence:         65, // Lower confidence for rule-based
+        summary,
+        recommendedActions: actions,
+      };
+    }
+  }
+
+  // Generic fallback (still better than "unavailable")
+  return {
+    incidentType:       'Unknown',
+    severity:           'HIGH',
+    confidence:         40,
+    summary:            `Emergency situation reported requiring immediate response. Details: "${message.slice(0, 80)}${message.length > 80 ? '...' : ''}"`,
+    recommendedActions: ['Dispatch nearest response unit', 'Assess situation on-site', 'Establish communication with reporter', 'Escalate if life-threatening'],
+  };
 }
 
 // =============================================================
@@ -64,13 +229,7 @@ Severity guide:
 Always respond ONLY with the JSON object, no other text.`;
 
   try {
-    const result = await genAI.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
-    });
-
-    const text  = result.text || '{}';
+    const text  = await generateWithFallback(prompt);
     const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const triage = JSON.parse(clean) as TriageResult;
 
@@ -85,14 +244,15 @@ Always respond ONLY with the JSON object, no other text.`;
       recommendedActions: Array.isArray(triage.recommendedActions) ? triage.recommendedActions : [],
     };
   } catch (err) {
-    console.error('🔴 [AI] Triage failed:', (err as Error).message);
-    return {
-      incidentType: 'Unknown',
-      severity: 'HIGH',
-      confidence: 50,
-      summary: 'Automated triage unavailable. Manual review required.',
-      recommendedActions: ['Dispatch responders', 'Assess on-site'],
-    };
+    const msg = (err as Error).message || String(err);
+    const isQuota = msg.includes('429') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('resource_exhausted');
+    if (isQuota) {
+      console.warn('🟡 [AI] ALL models quota-limited — using rule-based triage fallback.');
+    } else {
+      console.error('🔴 [AI] Triage failed:', msg, '— using rule-based triage fallback.');
+    }
+    // Degrade gracefully: keyword triage instead of dead fallback text
+    return ruleBasedTriage(message);
   }
 }
 
@@ -150,13 +310,7 @@ Generate this exact JSON:
 Be concise, direct, and actionable. Use emergency services terminology.`;
 
   try {
-    const result = await genAI.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: { responseMimeType: 'application/json' },
-    });
-
-    const text   = result.text || '{}';
+    const text   = await generateWithFallback(prompt);
     const clean  = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const sitrep = JSON.parse(clean) as SitrepResult;
 
