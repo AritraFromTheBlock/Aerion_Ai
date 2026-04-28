@@ -1,183 +1,232 @@
-# Arion AI – Emergency Response Platform 🚨
+# Arion AI – Emergency Response Platform 🚨
 
 ## Built by **Team Tetraverse**
 
-![Arion AI Banner](https://raw.githubusercontent.com/your-org/arion-ai/main/docs/banner.png)
-
-> **_A sleek, real‑time emergency response solution built with Flutter, Node.js, and Google Cloud._**
+> **_An intelligent, real‑time emergency response system powered by Flutter, Node.js, and Google Cloud._**
 
 ---
 
 ## Table of Contents
-- [🛠️ Overview](#overview)
-- [✨ Key Features](#key-features)
-- [🗂️ Architecture](#architecture)
-- [⚙️ Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Backend Setup](#backend-setup)
-  - [Frontend (Flutter) Setup](#frontend-setup)
-- [🚀 Development & Testing](#development--testing)
-- [📦 Building the APK](#building-the-apk)
-- [☁️ Deploying to Google Cloud Run](#deploying-to-google-cloud-run)
-- [💡 Billing Note](#billing-note)
-- [🔧 Common Pitfalls & Fixes](#common-pitfalls--fixes)
-- [📚 Documentation & Screenshots](#documentation--screenshots)
-- [🤝 Contributing](#contributing)
-- [🧾 License](#license)
+- [Overview](#-overview)
+- [Key Features](#-key-features)
+- [System Architecture](#-system-architecture)
+- [Technical Approach](#-technical-approach)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+- [Building the APK](#-building-the-apk)
+- [Cloud Deployment](#-cloud-deployment)
+- [API Reference](#-api-reference)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
 ## 🛠️ Overview
-Arion AI is a **production‑ready** emergency‑response mobile application. It enables citizens to:
-- **Send an instant SOS** with location & custom message.
-- **Report incidents** that are instantly triaged by Gemini AI.
-- **View live incidents** on an interactive map with severity‑coded markers.
-- **Confirm (corroborate) incidents** to improve response reliability.
 
-The backend lives on **Google Cloud Run**, stores data in **PostgreSQL (Cloud SQL)**, and uses **Google Firestore** for real‑time alerts. The Flutter client communicates through a clean, type‑safe API service.
+Arion AI is a **production‑grade**, AI‑driven emergency response platform designed to drastically reduce incident detection‑to‑response latency in crisis scenarios. The system enables:
+
+- **One‑tap SOS alerts** with real‑time GPS tracking and custom distress messages.
+- **AI‑powered incident triage** — every report is classified and summarised by Google Gemini before it reaches a responder.
+- **Live incident mapping** with severity‑coded markers, distance‑based scaling, and heatmap overlays.
+- **Crowd corroboration** — citizens confirm reported incidents, improving signal reliability and suppressing false positives.
+- **Auto‑escalation engine** — critical incidents with no responder assignment are automatically re‑escalated via FCM push notifications every 2 minutes (up to 3 rounds).
 
 ---
 
 ## ✨ Key Features
+
 | Feature | Description |
-|--------|-------------|
-| **📍 Real‑time Map** | Live incident markers with distance‑based scaling & severity colours.
-| **🤖 AI‑triage** | Gemini‑powered incident classification & summarisation.
-| **🚨 Panic SOS** | One‑tap emergency button that sends GPS + optional custom message.
-| **🗂️ Incident Dashboard** | Rescue‑mode view with detailed incident list & heat‑map overlays.
-| **🔐 Secure Backend** | Parameterised SQL queries, JWT‑based auth (future), and robust error handling.
-| **🛠️ Cross‑platform** | Flutter app works on Android (APK) and iOS (future).
-| **🧩 Extensible Architecture** | Separate `api_service.dart`, modular Node.js routes, and Dockerised deployment.
+|---------|-------------|
+| 📍 **Real‑Time Map** | Interactive incident map with live markers, distance scaling, and severity colour coding. |
+| 🤖 **Gemini AI Triage** | Automatic incident classification, severity assessment, and natural‑language SITREP generation. |
+| 🚨 **Panic SOS** | One‑tap emergency button transmitting GPS coordinates, altitude, accuracy, and optional message. |
+| 📊 **Analytics Dashboard** | 7‑day trend analysis, hourly volume sparkline, severity breakdown, and average response‑time metrics. |
+| 🔗 **Incident Clustering** | Smart 500m deduplication — overlapping reports are merged and corroboration counts aggregated. |
+| 🔔 **Auto‑Escalation** | Unattended CRITICAL incidents trigger periodic FCM re‑alerts to all registered responders. |
+| 🗂️ **Rescue Dashboard** | Priority‑sorted incident queue with filtering by severity, type, status, and proximity. |
+| 🔐 **Security First** | Parameterised SQL, API key gating, Helmet.js headers, CORS lockdown, and safe JSON decoding. |
+| 🌐 **WebSocket Feed** | Real‑time push to connected emergency clients via `ws://` for instant incident propagation. |
 
 ---
 
-## 🗂️ Architecture
+## 🗂️ System Architecture
+
 ```
-Arion AI (Flutter)            ←─── HTTPS (X‑API‑Key) ──►  Cloud Run (Node.js)
-│                              │
-│  lib/                        │   src/
-│   ├─ screens/                │    ├─ routes/ (incidents, sos, dashboard)
-│   ├─ services/api_service.dart│    ├─ middleware/ (auth, validation)
-│   └─ models/alert_model.dart │    └─ config/ (db, firebase, ai)
-│                              │
-│  Firebase Firestore (real‑time)   Cloud SQL (PostgreSQL)
-│                              │   (incident, user, sos tables)
-└─ assets/ (icons, fonts)          Dockerfile → Artifact Registry
+┌──────────────────────────────────────────────────────────────────────┐
+│                         FLUTTER MOBILE APP                           │
+│  lib/                                                                │
+│   ├── screens/          (SOS, Map, Report, Dashboard, Login)         │
+│   ├── services/         (ApiService — centralised HTTP + safe decode)│
+│   ├── models/           (CrisisAlert, AlertSeverity)                 │
+│   ├── widgets/          (CrisisCard, PrimaryButton)                  │
+│   └── theme/            (AppTheme — dark‑mode design system)         │
+└────────────────────┬─────────────────────────────────────────────────┘
+                     │  HTTPS + X‑Api‑Key / JWT Bearer
+                     ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│                    NODE.JS BACKEND (Cloud Run)                        │
+│  src/                                                                │
+│   ├── routes/                                                        │
+│   │    ├── incidents.ts   (report, nearby, corroborate, CRUD)        │
+│   │    ├── sos.ts         (quick SOS, update, cancel)                │
+│   │    ├── analytics.ts   (heatmap, trends, response performance)    │
+│   │    ├── dashboard.ts   (stats, filtered lists, SOS map)           │
+│   │    └── auth.ts        (register, profile, FCM token sync)        │
+│   ├── middleware/         (JWT verify, role guard, API key check)     │
+│   ├── config/             (PostgreSQL pool, Firebase Admin, Gemini)   │
+│   └── index.ts            (Express app, WebSocket server, escalation)│
+└────────┬──────────────┬──────────────┬───────────────────────────────┘
+         │              │              │
+         ▼              ▼              ▼
+   ┌──────────┐  ┌────────────┐  ┌──────────────┐
+   │ Cloud SQL│  │ Firestore  │  │  Gemini AI   │
+   │ Postgres │  │ (realtime) │  │  (triage)    │
+   └──────────┘  └────────────┘  └──────────────┘
 ```
-All network traffic is encrypted via HTTPS. The backend uses **parameterised PostgreSQL queries** to prevent SQL injection (fixed in `incidents.ts` and `dashboard.ts`).
+
+All network traffic is encrypted via HTTPS. The backend enforces **parameterised SQL queries** across every route to eliminate injection vectors.
+
+---
+
+## 🔬 Technical Approach
+
+### Service‑Oriented Design
+The backend is architected as a collection of **stateless Express route modules** — each responsible for a single domain (incidents, SOS, analytics, dashboard). Business logic is encapsulated in dedicated service files, enabling independent horizontal scaling and clean separation of concerns.
+
+### Intelligent API Layer
+All endpoints expose a strict **JSON contract** defined by TypeScript interfaces. Anonymous endpoints are gated by `X‑Api‑Key` headers; authenticated endpoints verify Firebase JWTs with role‑based access control (`normal`, `emergency`). The Flutter client uses a **centralised `_safeJsonDecode()` helper** that gracefully handles HTML error pages, empty responses, and malformed JSON — converting them into structured `ApiException` objects instead of crashing.
+
+### Multi‑Tier Data Architecture
+- **PostgreSQL (Cloud SQL)** — Primary relational store for incidents, SOS alerts, users, and incident update timelines.
+- **Google Firestore** — Real‑time document store for push notification orchestration and live state sync.
+- **In‑Memory WebSocket Registry** — Server‑side `Set<WSClient>` tracks connected responders by room, enabling instant broadcast of new incidents, escalations, and status changes.
+
+### AI‑Powered Triage Pipeline
+Every incident report passes through a **Gemini AI classification pipeline** that:
+1. Determines `incident_type` (FIRE, FLOOD, MEDICAL, ACCIDENT, STRUCTURAL, CHEMICAL, OTHER).
+2. Assigns a `severity` level (LOW, MODERATE, HIGH, CRITICAL).
+3. Generates a concise natural‑language **SITREP summary** for responders.
+4. Attempts **500m radius clustering** to merge duplicate reports and aggregate corroboration counts.
+
+### Auto‑Escalation Engine
+A background interval (every 2 minutes) scans for **CRITICAL incidents** that remain unassigned beyond 3 minutes. These are automatically re‑escalated:
+- Escalation count is incremented (capped at 3).
+- FCM high‑priority push is re‑sent to all `emergency` role users.
+- WebSocket `INCIDENT_ESCALATED` event is broadcast.
+- A timeline entry is appended for audit traceability.
+
+### CI/CD & Infrastructure as Code
+- **Cloud Build** (`cloudbuild.yaml`) — Builds Docker image → pushes to Artifact Registry → deploys to Cloud Run.
+- **Dockerfile** — Multi‑stage Node.js build with production‑only dependencies.
+- Service resources (memory, CPU, concurrency, request timeout) are **declaratively specified**, enabling repeatable, reproducible deployments.
+
+### Observability
+- **Cloud Logging** — Structured request traces with Morgan middleware.
+- **Cloud Monitoring** — Latency, error‑rate, and custom metric dashboards.
+- **Request ID correlation** — Logs include unique identifiers to trace requests across frontend → backend → database layers.
+
+---
+
+## 🧰 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Mobile** | Flutter 3.22+ · Dart · Google Maps SDK · Geolocator |
+| **Backend** | Node.js 18+ · Express · TypeScript |
+| **AI Engine** | Google Gemini (`@google/genai` SDK) |
+| **Database** | PostgreSQL 15 (Cloud SQL) · Firestore |
+| **Realtime** | WebSocket (`ws`) · Firebase Cloud Messaging |
+| **Infrastructure** | Google Cloud Run · Cloud Build · Artifact Registry · Docker |
+| **Security** | Helmet.js · CORS · Parameterised SQL · Firebase Auth |
 
 ---
 
 ## ⚙️ Getting Started
+
 ### Prerequisites
-- **Node.js ≥18** and **npm** (for the backend)
-- **Flutter ≥3.22** with a recent stable channel (Android SDK installed)
-- **Google Cloud SDK** (`gcloud`) – authenticated to the project `aegis-crisis-response-493911`
-- **Docker Desktop** (optional, for local backend container testing)
-- **A Google Cloud billing account** linked to the project (required for Cloud Run). See the **Billing Note** below.
+- **Node.js ≥ 18** and **npm**
+- **Flutter ≥ 3.22** (stable channel, Android SDK configured)
+- **Google Cloud SDK** (`gcloud`) authenticated to your GCP project
+- **Docker Desktop** (optional, for local container testing)
 
 ### Backend Setup
 ```bash
-# Clone the repository (if not already) and cd into backend
-cd "C:/Users/panda/OneDrive/Desktop/Arion AI/arion-ai-backend"
+cd arion-ai-backend
 
-# Install dependencies
-npm ci   # deterministic install (already in node_modules)
-
-# Create a .env file – copy the template
-cp .env.example .env
-# Edit .env with your Cloud SQL credentials, Firestore project ID, etc.
-
-# Run lint & type‑check (optional)
-npm run lint
-
-# Run locally (development server)
-npm run dev   # listens on http://localhost:8080
+npm ci                    # Install dependencies
+cp .env.example .env      # Configure Cloud SQL, Firestore, Gemini API key
+npm run dev               # Start dev server → http://localhost:8080
 ```
-> **Tip:** The backend exposes a health endpoint at `GET /healthz`.
 
-### Frontend (Flutter) Setup
+### Frontend Setup
 ```bash
-# From the project root
-cd "C:/Users/panda/OneDrive/Desktop/Arion AI"
-
-# Get Flutter packages
-flutter pub get
-
-# Run the app on an emulator or device
-flutter run   # or flutter run --release for production build
+flutter pub get           # Fetch packages
+flutter run               # Launch on connected device/emulator
 ```
-The app expects the backend URL defined in `api_service.dart` (`baseUrl`). If you run the backend locally, update the constant to `http://10.0.2.2:8080` (Android emulator) or your LAN IP.
 
----
-
-## 🚀 Development & Testing
-- **Backend:** `npm run lint` (tsc no‑emit) validates TypeScript. Use `npm test` (if you add Jest/Mocha tests).
-- **Flutter:** `flutter analyze` shows static analysis; `flutter test` runs unit/widget tests.
-- **Live Debugging:** The API service now uses a *centralised safe JSON decoder* (`_safeJsonDecode`) that converts HTML error pages or empty responses into a user‑friendly `ApiException` – no more unexpected `FormatException` crashes.
+> Update `baseUrl` in `lib/services/api_service.dart` to point to your backend (Cloud Run URL or `http://10.0.2.2:8080` for Android emulator).
 
 ---
 
 ## 📦 Building the APK
-```bash
-# From project root
-flutter build apk --release
 
-# The APK will be at:
-build/app/outputs/flutter-apk/app-release.apk
+```bash
+flutter build apk --release
+# Output: build/app/outputs/flutter-apk/app-release.apk (~55 MB)
 ```
-A production‑ready **55 MB** APK is generated. I automatically copied it to your Desktop as `Arion‑AI.apk` during the last step.
 
 ---
 
-## ☁️ Deploying to Google Cloud Run
-```bash
-# From the backend folder
-cd "C:/Users/panda/OneDrive/Desktop/Arion AI/arion-ai-backend"
+## ☁️ Cloud Deployment
 
-# Build and push Docker image
+```bash
+cd arion-ai-backend
 gcloud builds submit --config cloudbuild.yaml
 
-# The Cloud Build pipeline:
-#   1️⃣ Build Docker image
-#   2️⃣ Push to Artifact Registry
-#   3️⃣ Deploy to Cloud Run (service: arion‑ai‑backend)
+# Pipeline: Build Image → Push to Artifact Registry → Deploy to Cloud Run
 ```
-After deployment, the service URL appears in the Cloud Run console (e.g. `https://arion-ai-backend-kshlsswxia-el.a.run.app`). Ensure the **`X‑Api‑Key`** in `api_service.dart` matches the backend key.
+
+The production service URL is displayed in the Cloud Run console. Ensure the `X‑Api‑Key` in `api_service.dart` matches the backend's configured key.
 
 ---
 
-## 🛠️ Technical Approach & Architecture
+## 📡 API Reference
 
-**Service‑Oriented Design** – The backend is built as a collection of stateless Express routes (incidents, SOS, analytics) each encapsulated in dedicated TypeScript service modules, enabling horizontal scaling and clear separation of concerns.
-
-**API Layer** – All endpoints expose a clean JSON contract defined by TypeScript interfaces. Anonymous endpoints are protected by an `X‑Api‑Key` header, while future authenticated calls will use JWTs. All SQL statements are fully parameterised to eliminate injection risks.
-
-**Data Layer** – PostgreSQL (Cloud SQL) stores core incident and SOS records. Firestore is leveraged for real‑time push notifications to the Flutter client. Schema migrations are version‑controlled via SQL scripts.
-
-**CI/CD Pipeline** – Cloud Build builds a Docker image, pushes it to Artifact Registry, and deploys to Cloud Run. The pipeline runs linting, type‑checking, and security scans on every commit, ensuring consistent releases.
-
-**Observability** – Cloud Logging captures structured request traces; Cloud Monitoring provides latency, error‑rate, and custom dashboards. Logs include request IDs to correlate frontend and backend processing.
-
-**Infrastructure as Code** – Deployment configuration resides in `cloudbuild.yaml` and `Dockerfile`. Service resources (memory, CPU, concurrency, timeout) are declaratively specified, enabling repeatable, reproducible deployments.
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/incidents/quick-report` | API Key | Submit incident with AI triage |
+| `GET` | `/incidents/nearby` | — | Nearby incidents for map view |
+| `POST` | `/incidents/:id/corroborate` | API Key | Crowd‑verify an incident |
+| `GET` | `/incidents/:id` | — | Full incident detail + timeline |
+| `POST` | `/sos/quick` | API Key | Anonymous SOS panic alert |
+| `POST` | `/sos/quick/update` | API Key | Live location update for active SOS |
+| `POST` | `/sos/quick/cancel` | API Key | Cancel an active SOS |
+| `GET` | `/analytics/heatmap` | — | Incident density grid for map overlay |
+| `GET` | `/analytics/trends` | — | 7‑day type/severity/hourly trends |
+| `GET` | `/analytics/response-performance` | JWT | Per‑responder resolution stats |
+| `GET` | `/dashboard/stats` | JWT (emergency) | Dashboard overview counters |
+| `GET` | `/dashboard/incidents` | JWT (emergency) | Priority‑sorted incident queue |
+| `GET` | `/dashboard/sos` | JWT (emergency) | Active SOS alerts for responder map |
+| `WS` | `/ws?room=emergency` | — | Real‑time incident/escalation feed |
 
 ---
 
 ## 🤝 Contributing
-Contributions are welcome! Please follow these steps:
+
 1. **Fork** the repository.
-2. **Create a feature branch** (`git checkout -b feat/awesome‑feature`).
+2. **Create a feature branch** — `git checkout -b feat/your-feature`
 3. **Write tests** for any new logic.
-4. **Run lint & tests** (`npm run lint`, `flutter analyze`).
+4. **Run lint & tests** — `npm run lint` · `flutter analyze`
 5. **Submit a Pull Request** with a clear description.
 
-All code should adhere to the existing **eslint**/**dart analyze** rules and include **unit or widget tests** where applicable.
+All code must adhere to the existing **ESLint** / **dart analyze** rules and include unit or widget tests where applicable.
 
 ---
 
 ## 🧾 License
-© 2026 Panda Software.  Distributed under the **MIT License**. See `LICENSE` for details.
+
+© 2026 **Team Tetraverse**. Distributed under the **MIT License**. See `LICENSE` for details.
 
 ---
 
-*Happy coding, stay safe, and let Arion AI bring help to those who need it the most!*
+*Built with precision. Deployed with purpose. **Arion AI** — every second counts.* 🚀
