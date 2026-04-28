@@ -1,4 +1,4 @@
-# Arion AI – Emergency Response Platform 🚨
+# Aerion AI – Emergency Response Platform 🚨
 
 ## Built by **Team Tetraverse**
 
