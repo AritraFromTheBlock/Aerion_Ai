@@ -10,41 +10,18 @@ substitutions:
   _TESTER_GROUPS: 'arion-testers'              # Firebase App Distribution tester group
 
 steps:
-  # ── Step 1: Install Flutter SDK ────────────────────────────
-  - name: 'ubuntu'
-    id: 'install-flutter'
-    entrypoint: bash
-    args:
-      - '-c'
-      - |
-        apt-get update -qq && apt-get install -y -qq curl git unzip xz-utils zip libglu1-mesa openjdk-17-jdk wget
-        export FLUTTER_VERSION=3.32.0
-        wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_$${FLUTTER_VERSION}-stable.tar.xz
-        tar xf flutter_linux_$${FLUTTER_VERSION}-stable.tar.xz -C /opt
-        /opt/flutter/bin/flutter --version
-        /opt/flutter/bin/flutter config --no-analytics
-
-  # ── Step 2: Get pub dependencies ───────────────────────────
-  - name: 'ubuntu'
-    id: 'flutter-pub-get'
-    entrypoint: bash
-    args:
-      - '-c'
-      - |
-        /opt/flutter/bin/flutter pub get
-    waitFor: ['install-flutter']
-
-  # ── Step 3: Build release APK ──────────────────────────────
-  - name: 'ubuntu'
+  # ── Step 1 & 2: Build release APK using official Flutter image ──
+  - name: 'ghcr.io/cirruslabs/flutter:stable'
     id: 'flutter-build-apk'
     entrypoint: bash
     args:
       - '-c'
       - |
-        /opt/flutter/bin/flutter build apk --release --split-per-abi
+        git config --global --add safe.directory '*'
+        flutter pub get
+        flutter build apk --release --split-per-abi
         echo "=== APK Build Complete ==="
         ls -lh build/app/outputs/flutter-apk/
-    waitFor: ['flutter-pub-get']
 
   # ── Step 4: Upload APK to Firebase App Distribution ────────
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
