@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+*.log
+inspect-db.js
+.gitignore
+README.md
+SQL_SCHEMA.sql

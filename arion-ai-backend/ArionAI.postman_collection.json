@@ -1,0 +1,320 @@
+{
+  "info": {
+    "name": "Arion AI — LiveCrisis Backend",
+    "description": "Complete API test collection for Arion AI backend.\n\nBase URL: https://arion-ai-backend-239614749485.asia-south1.run.app\n\nFor authenticated endpoints:\n1. Firebase Console → Authentication → Users → Add User\n2. Get a real token and paste it in the 'firebase_token' variable.\n\nFor anonymous endpoints (Flutter before auth):\n- Set the 'api_key' variable to match ARION_API_KEY in your .env\n- Current dev key: arion-flutter-dev-key-change-in-production",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",       "value": "https://arion-ai-backend-239614749485.asia-south1.run.app" },
+    { "key": "firebase_token", "value": "PASTE_YOUR_FIREBASE_ID_TOKEN_HERE" },
+    { "key": "api_key",        "value": "arion-flutter-dev-key-change-in-production" }
+  ],
+  "item": [
+    {
+      "name": "🟢 Public (No Auth)",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/",
+            "description": "Check if server is alive and see all endpoints"
+          }
+        },
+        {
+          "name": "Nearby Incidents (Flutter Map)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/incidents/nearby?lat=12.9716&lng=77.5946&radius=50",
+              "query": [
+                { "key": "lat",    "value": "12.9716" },
+                { "key": "lng",    "value": "77.5946" },
+                { "key": "radius", "value": "50" }
+              ]
+            },
+            "description": "Returns incidents mapped to Flutter CrisisAlert model fields (title, description, severity: critical/warning/safe, time, distance, latitude, longitude)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📱 Anonymous Flutter (X-Api-Key only)",
+      "item": [
+        {
+          "name": "Quick Report — Building Fire 🔥",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key",    "value": "{{api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/incidents/quick-report",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"There is a massive fire on the 3rd floor of the building! People are trapped and smoke is filling up everywhere!\",\n  \"lat\": 12.9716,\n  \"lng\": 77.5946,\n  \"address\": \"123 MG Road, Bangalore\",\n  \"deviceId\": \"flutter-test-device-001\"\n}"
+            },
+            "description": "Anonymous incident report. Triggers full AI triage pipeline without Firebase Auth.\nFlutter sends this from ReportScreen."
+          }
+        },
+        {
+          "name": "Quick Report — Flood 🌊",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key",    "value": "{{api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/incidents/quick-report",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Road completely flooded, water level is 4 feet high and rising. Several cars are submerged.\",\n  \"lat\": 12.9352,\n  \"lng\": 77.6245,\n  \"address\": \"Koramangala 5th Block, Bangalore\",\n  \"deviceId\": \"flutter-test-device-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Quick Report — Medical 🚑",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key",    "value": "{{api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/incidents/quick-report",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Elderly man collapsed and is unconscious. Need ambulance immediately.\",\n  \"lat\": 12.9832,\n  \"lng\": 77.5876,\n  \"deviceId\": \"flutter-test-device-001\"\n}"
+            }
+          }
+        },
+        {
+          "name": "SOS Quick — Panic Button 🆘",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Api-Key",    "value": "{{api_key}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/sos/quick",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": 12.9716,\n  \"lng\": 77.5946,\n  \"message\": \"HELP! I am trapped in the building and need immediate rescue!\",\n  \"deviceId\": \"flutter-test-device-001\"\n}"
+            },
+            "description": "Anonymous SOS. Flutter sends this when the panic button is pressed without auth.\nBroadcasts to all emergency responders via FCM + WebSocket."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔐 Auth (Firebase Token Required)",
+      "item": [
+        {
+          "name": "Register User (Normal/Citizen)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{firebase_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": "{{base_url}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Citizen\",\n  \"role\": \"normal\",\n  \"fcmToken\": \"test_fcm_token_citizen_123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register Emergency Responder",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{firebase_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": "{{base_url}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Responder Alpha\",\n  \"role\": \"emergency\",\n  \"fcmToken\": \"responder_fcm_token_456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/auth/profile"
+          }
+        },
+        {
+          "name": "Update Profile (FCM + Location)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{firebase_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": "{{base_url}}/auth/profile",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fcmToken\": \"new_fcm_token_xyz\",\n  \"lat\": 12.9716,\n  \"lng\": 77.5946\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🚨 Incidents (Firebase Auth)",
+      "item": [
+        {
+          "name": "Report Incident (AI Triage) — Authenticated",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{firebase_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": "{{base_url}}/incidents/report",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"There is a massive fire on the 3rd floor of the building! People are trapped!\",\n  \"lat\": 12.9716,\n  \"lng\": 77.5946,\n  \"address\": \"123 MG Road, Bangalore\"\n}"
+            },
+            "description": "Authenticated version. Requires Firebase token + normal role."
+          }
+        },
+        {
+          "name": "List All Incidents",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/incidents?status=ACTIVE&page=1&limit=20",
+              "query": [
+                { "key": "status", "value": "ACTIVE" },
+                { "key": "page",   "value": "1" },
+                { "key": "limit",  "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Incident Detail",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/incidents/PASTE_INCIDENT_ID_HERE",
+            "description": "Paste an incident ID from a previous report response"
+          }
+        },
+        {
+          "name": "Resolve Incident [Emergency Only]",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{firebase_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": "{{base_url}}/incidents/PASTE_INCIDENT_ID_HERE/resolve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"Fire extinguished. Area secured by fire brigade.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Assign Incident [Emergency Only]",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/incidents/PASTE_INCIDENT_ID_HERE/assign"
+          }
+        },
+        {
+          "name": "Mark Self Safe",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/incidents/PASTE_INCIDENT_ID_HERE/safe"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🆘 SOS (Firebase Auth)",
+      "item": [
+        {
+          "name": "Send SOS Alert — Authenticated 🆘",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{firebase_token}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "url": "{{base_url}}/sos",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lat\": 12.9716,\n  \"lng\": 77.5946,\n  \"message\": \"HELP! I am trapped in the building!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Active SOS [Emergency Only]",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/sos"
+          }
+        },
+        {
+          "name": "Respond to SOS [Emergency Only]",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/sos/PASTE_SOS_ID_HERE/respond"
+          }
+        },
+        {
+          "name": "Cancel SOS",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/sos/PASTE_SOS_ID_HERE"
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Dashboard [Emergency Only]",
+      "item": [
+        {
+          "name": "Dashboard Stats (incl. availableUnits)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/dashboard/stats",
+            "description": "Now includes availableUnits count from DB (no longer hardcoded in Flutter)"
+          }
+        },
+        {
+          "name": "Priority Sorted Incidents",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/dashboard/incidents?status=ACTIVE",
+              "query": [{ "key": "status", "value": "ACTIVE" }]
+            }
+          }
+        },
+        {
+          "name": "SOS Map View",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{firebase_token}}" }],
+            "url": "{{base_url}}/dashboard/sos"
+          }
+        }
+      ]
+    }
+  ]
+}

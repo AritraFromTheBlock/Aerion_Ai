@@ -1,0 +1,86 @@
+# =============================================
+# ARION AI Flutter — Cloud Build APK Pipeline
+# Builds a release APK and uploads to
+# Firebase App Distribution for testers.
+# =============================================
+
+substitutions:
+  _PROJECT: aegis-crisis-response-493911
+  _APP_ID: '1:239614749485:android:aerion_ai'  # Update with your real Firebase App ID
+  _TESTER_GROUPS: 'arion-testers'              # Firebase App Distribution tester group
+
+steps:
+  # ── Step 1: Install Flutter SDK ────────────────────────────
+  - name: 'ubuntu'
+    id: 'install-flutter'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        apt-get update -qq && apt-get install -y -qq curl git unzip xz-utils zip libglu1-mesa openjdk-17-jdk wget
+        export FLUTTER_VERSION=3.32.0
+        wget -q https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_$${FLUTTER_VERSION}-stable.tar.xz
+        tar xf flutter_linux_$${FLUTTER_VERSION}-stable.tar.xz -C /opt
+        /opt/flutter/bin/flutter --version
+        /opt/flutter/bin/flutter config --no-analytics
+
+  # ── Step 2: Get pub dependencies ───────────────────────────
+  - name: 'ubuntu'
+    id: 'flutter-pub-get'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        /opt/flutter/bin/flutter pub get
+    waitFor: ['install-flutter']
+
+  # ── Step 3: Build release APK ──────────────────────────────
+  - name: 'ubuntu'
+    id: 'flutter-build-apk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        /opt/flutter/bin/flutter build apk --release --split-per-abi
+        echo "=== APK Build Complete ==="
+        ls -lh build/app/outputs/flutter-apk/
+    waitFor: ['flutter-pub-get']
+
+  # ── Step 4: Upload APK to Firebase App Distribution ────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'firebase-distribute'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        pip install firebase_admin --quiet
+        curl -sL https://firebase.tools | bash
+        firebase appdistribution:distribute \
+          build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+          --app ${_APP_ID} \
+          --release-notes "Build $${SHORT_SHA} — Automated CI/CD via Cloud Build" \
+          --groups ${_TESTER_GROUPS} \
+          --project ${_PROJECT}
+    waitFor: ['flutter-build-apk']
+
+  # ── Step 5: Copy APK to Cloud Storage for archival ─────────
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'archive-apk'
+    args:
+      - '-m'
+      - 'cp'
+      - 'build/app/outputs/flutter-apk/app-arm64-v8a-release.apk'
+      - 'gs://${_PROJECT}-apk-builds/${SHORT_SHA}/arion-ai-${SHORT_SHA}.apk'
+    waitFor: ['flutter-build-apk']
+
+artifacts:
+  objects:
+    location: 'gs://${_PROJECT}-apk-builds/${SHORT_SHA}/'
+    paths:
+      - 'build/app/outputs/flutter-apk/*.apk'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+timeout: '1800s'

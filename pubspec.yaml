@@ -1,0 +1,84 @@
+name: aerion_ai
+description: "AERION AI — SOS Alert System powered by Gemini AI"
+publish_to: 'none'
+
+version: 1.1.0+2
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  google_fonts: ^8.0.2
+  flutter_map: ^8.3.0
+  latlong2: ^0.9.1
+  geolocator: ^14.0.2
+  # HTTP client for backend API calls
+  http: ^1.2.1
+  # Device ID for anonymous reporting
+  device_info_plus: ^10.1.0
+  # Offline cache — stores last known alerts when no network
+  shared_preferences: ^2.3.3
+  # Native splash screen
+  flutter_native_splash: ^2.4.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section, like this:
+  assets:
+    - assets/
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/to/resolution-aware-images
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/to/asset-from-package
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
+
+flutter_native_splash:
+  color: "#121317"
+  color_dark: "#121317"
+  image: assets/splash_logo.png
+  android: true
+  ios: false
+  fullscreen: true
+  android_12:
+    color: "#121317"
+    color_dark: "#121317"
+    image: assets/splash_logo.png
